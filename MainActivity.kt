@@ -1,94 +1,86 @@
-package com.example.lab_1
+package com.example.lab5
 
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Color
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.material.DropdownMenuItem
+import android.view.View
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener {
+
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private lateinit var levelView: LevelView
+    private var pitch: Float = 0f
+    private var roll: Float = 0f
+
     override fun onCreate(savedInstanceState: Bundle?) {
-       super.onCreate(savedInstanceState)
-        setContent {
-            PhoneSelectorApp()
+        super.onCreate(savedInstanceState)
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        levelView = LevelView(this)
+        setContentView(levelView)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        accelerometer?.also { acc ->
+            sensorManager.registerListener(this, acc, SensorManager.SENSOR_DELAY_UI)
         }
     }
-}
 
-@Composable
-fun PhoneSelectorApp() {
-    val context = LocalContext.current
-    var selectedPhoneType by remember { mutableStateOf<String?>(null) }
-    var selectedBrand by remember { mutableStateOf<String?>(null) }
-    var resultText by remember { mutableStateOf("") }
-
-    val phoneTypes = listOf("Смартфон", "Кнопковий", "Розкладний")
-    val brands = listOf("Samsung", "Apple", "Xiaomi", "OnePlus")
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Оберіть тип телефону:")
-        DropdownMenuPhoneTypes(phoneTypes) { selectedPhoneType = it }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Оберіть фірму:")
-        brands.forEach { brand ->
-            Row {
-                RadioButton(
-                    selected = selectedBrand == brand,
-                    onClick = { selectedBrand = brand }
-                )
-                Text(text = brand, modifier = Modifier.padding(start = 8.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = {
-            if (selectedPhoneType == null || selectedBrand == null) {
-                Toast.makeText(context, "Будь ласка, оберіть всі параметри", Toast.LENGTH_SHORT).show()
-            } else {
-                resultText = "Ви обрали: $selectedPhoneType, $selectedBrand"
-            }
-        }) {
-            Text(text = "OK")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = resultText)
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
     }
-}
 
-@Composable
-fun DropdownMenuPhoneTypes(phoneTypes: List<String>, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedOption by remember { mutableStateOf(phoneTypes.first()) }
+    override fun onSensorChanged(event: SensorEvent?) {
+        event?.let {
+            if (it.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                val x = it.values[0]
+                val y = it.values[1]
 
-    Box {
-        Button(onClick = { expanded = true }) {
-            Text(text = selectedOption)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            phoneTypes.forEach { phone ->
-                DropdownMenuItem(onClick = {
-                    selectedOption = phone
-                    onSelect(phone)
-                    expanded = false
-                }) {
-                    Text(text = phone)
-                }
+                pitch = Math.toDegrees(Math.atan2(y.toDouble(), x.toDouble())).toFloat()
+                roll = Math.toDegrees(Math.atan2(-x.toDouble(), y.toDouble())).toFloat()
+
+                levelView.invalidate()
             }
         }
     }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun DefaultPreview() {
-    PhoneSelectorApp()
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+
+    }
+
+    private inner class LevelView(context: Context) : View(context) {
+        private val paintLine: Paint = Paint().apply {
+            color = Color.RED
+            strokeWidth = 10f
+        }
+        private val paintText: Paint = Paint().apply {
+            color = Color.BLACK
+            textSize = 60f
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val width = width
+            val height = height
+
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val endX = (centerX + Math.cos(Math.toRadians(roll.toDouble())) * width / 3).toFloat()
+            val endY = (centerY + Math.sin(Math.toRadians(roll.toDouble())) * width / 3).toFloat()
+
+            canvas.drawLine(centerX - (endX - centerX), centerY - (endY - centerY), endX, endY, paintLine)
+            canvas.drawText("Кут нахилу: ${"%.1f".format(roll)}°", 50f, height - 100f, paintText)
+        }
+    }
 }
